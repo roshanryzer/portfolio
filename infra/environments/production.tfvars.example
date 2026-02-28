@@ -13,5 +13,5 @@ tags = {
 }
 
 # Custom domain (optional) - set both for HTTPS + auto DNS
-# domain_name     = "roshan-shrestha.com"
-# route53_zone_id = "Z0123456789ABCDEFGHIJ"  # From Route 53 hosted zone
+domain_name     = "roshan-shrestha.com"
+route53_zone_id = "Z0123456789ABCDEFGHIJ"  # From Route 53 hosted zone
