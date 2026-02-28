@@ -78,10 +78,112 @@ resource "aws_lb" "main" {
   tags               = var.tags
 }
 
+# ACM certificate for custom domain (when domain_name is set)
+resource "aws_acm_certificate" "main" {
+  count = var.domain_name != "" ? 1 : 0
+
+  domain_name               = var.domain_name
+  subject_alternative_names = ["www.${var.domain_name}"]
+  validation_method         = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = var.tags
+}
+
+# Route 53 validation records for ACM (when zone_id is provided)
+resource "aws_route53_record" "cert_validation" {
+  for_each = var.domain_name != "" && var.route53_zone_id != "" ? {
+    for dvo in aws_acm_certificate.main[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  zone_id = var.route53_zone_id
+  name    = each.value.name
+  type    = each.value.type
+  records = [each.value.record]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "main" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  certificate_arn         = aws_acm_certificate.main[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
+
+# Route 53 A record pointing domain to ALB (when zone_id is provided)
+resource "aws_route53_record" "root" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "www" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = "www.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
+
+  default_action {
+    type = var.domain_name != "" && var.route53_zone_id != "" ? "redirect" : "fixed-response"
+
+    dynamic "redirect" {
+      for_each = var.domain_name != "" && var.route53_zone_id != "" ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+
+    dynamic "fixed_response" {
+      for_each = var.domain_name == "" || var.route53_zone_id == "" ? [1] : []
+      content {
+        content_type = "text/plain"
+        message_body = "OK"
+        status_code  = "200"
+      }
+    }
+  }
+}
+
+# HTTPS listener (when domain is set and cert is validated via Route 53)
+resource "aws_lb_listener" "https" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.main[0].certificate_arn
+
   default_action {
     type = "fixed-response"
     fixed_response {
@@ -176,4 +278,26 @@ output "alb_dns_name" {
 
 output "s3_assets_bucket" {
   value = aws_s3_bucket.assets.id
+}
+
+output "domain_name" {
+  value       = var.domain_name
+  description = "Custom domain configured"
+}
+
+output "website_url" {
+  value       = var.domain_name != "" ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+  description = "Primary URL for the application"
+}
+
+# ACM validation records (when domain set but using external DNS - add these CNAMEs manually)
+output "acm_validation_records" {
+  value = var.domain_name != "" && var.route53_zone_id == "" ? [
+    for dvo in aws_acm_certificate.main[0].domain_validation_options : {
+      name   = dvo.resource_record_name
+      type   = dvo.resource_record_type
+      value  = dvo.resource_record_value
+    }
+  ] : []
+  description = "Add these CNAME records to your DNS for ACM certificate validation"
 }

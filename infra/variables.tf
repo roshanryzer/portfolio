@@ -45,3 +45,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "domain_name" {
+  description = "Custom domain for the application (e.g. roshan-shrestha.com)"
+  type        = string
+  default     = ""
+}
+
+variable "route53_zone_id" {
+  description = "Route 53 hosted zone ID for the domain. If set, creates A record and ACM validation records."
+  type        = string
+  default     = ""
+}
