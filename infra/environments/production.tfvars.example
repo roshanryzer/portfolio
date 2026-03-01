@@ -12,6 +12,9 @@ tags = {
   Project     = "portfolio"
 }
 
-# Custom domain (optional) - set both for HTTPS + auto DNS
+# Custom domain - set BOTH for roshan-shrestha.com (get zone ID from Route 53 → Hosted zones)
 domain_name     = "roshan-shrestha.com"
-route53_zone_id = "Z0123456789ABCDEFGHIJ"  # From Route 53 hosted zone
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# Database - required for backend (Neon, Supabase, or RDS)
+# database_url = "postgresql://user:pass@host:5432/portfolio"

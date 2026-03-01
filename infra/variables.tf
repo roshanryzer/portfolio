@@ -57,3 +57,11 @@ variable "route53_zone_id" {
   type        = string
   default     = ""
 }
+
+variable "database_url" {
+  description = "PostgreSQL connection string for the backend (use Secrets Manager ARN or direct URL)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+

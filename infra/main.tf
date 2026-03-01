@@ -146,31 +146,34 @@ resource "aws_route53_record" "www" {
   }
 }
 
-resource "aws_lb_listener" "http" {
+# HTTP listener: redirect to HTTPS when domain set, else forward to frontend
+resource "aws_lb_listener" "http_redirect" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
   load_balancer_arn = aws_lb.main.arn
   port              = "80"
   protocol          = "HTTP"
 
   default_action {
-    type = var.domain_name != "" && var.route53_zone_id != "" ? "redirect" : "fixed-response"
-
-    dynamic "redirect" {
-      for_each = var.domain_name != "" && var.route53_zone_id != "" ? [1] : []
-      content {
-        port        = "443"
-        protocol    = "HTTPS"
-        status_code = "HTTP_301"
-      }
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
     }
+  }
+}
 
-    dynamic "fixed_response" {
-      for_each = var.domain_name == "" || var.route53_zone_id == "" ? [1] : []
-      content {
-        content_type = "text/plain"
-        message_body = "OK"
-        status_code  = "200"
-      }
-    }
+resource "aws_lb_listener" "http_forward" {
+  count = var.domain_name == "" || var.route53_zone_id == "" ? 1 : 0
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
 
@@ -185,12 +188,8 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = aws_acm_certificate_validation.main[0].certificate_arn
 
   default_action {
-    type = "fixed-response"
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "OK"
-      status_code  = "200"
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
   }
 }
 
@@ -231,6 +230,12 @@ resource "aws_security_group" "ecs" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
   }
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -238,6 +243,212 @@ resource "aws_security_group" "ecs" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   tags = var.tags
+}
+
+# ALB Target groups
+resource "aws_lb_target_group" "frontend" {
+  name        = "${var.project_name}-frontend-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"
+
+  health_check {
+    path                = "/"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+  }
+  tags = var.tags
+}
+
+resource "aws_lb_target_group" "backend" {
+  name        = "${var.project_name}-backend-tg"
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"
+
+  health_check {
+    path                = "/api/v1/health"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+  }
+  tags = var.tags
+}
+
+# ECS Task execution role (for ECS to pull images, write logs)
+resource "aws_iam_role" "ecs_execution" {
+  name = "${var.project_name}-ecs-execution"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+  tags = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# ECS Task role (for app)
+resource "aws_iam_role" "ecs_task" {
+  name = "${var.project_name}-ecs-task"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+    }]
+  })
+  tags = var.tags
+}
+
+# ECS Task definitions
+resource "aws_ecs_task_definition" "frontend" {
+  family                   = "${var.project_name}-frontend"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name  = "frontend"
+    image = "${aws_ecr_repository.frontend.repository_url}:latest"
+    portMappings = [{
+      containerPort = 80
+      protocol      = "tcp"
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = "/ecs/${var.project_name}-frontend"
+        "awslogs-region"         = var.aws_region
+        "awslogs-stream-prefix"  = "ecs"
+      }
+    }
+  }])
+  tags = var.tags
+}
+
+resource "aws_ecs_task_definition" "backend" {
+  family                   = "${var.project_name}-backend"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name  = "backend"
+    image = "${aws_ecr_repository.backend.repository_url}:latest"
+    portMappings = [{
+      containerPort = 3000
+      protocol      = "tcp"
+    }]
+    environment = var.database_url != "" ? [
+      { name = "NODE_ENV", value = "production" },
+      { name = "DATABASE_URL", value = var.database_url }
+    ] : [
+      { name = "NODE_ENV", value = "production" }
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = "/ecs/${var.project_name}-backend"
+        "awslogs-region"         = var.aws_region
+        "awslogs-stream-prefix"  = "ecs"
+      }
+    }
+  }])
+  tags = var.tags
+}
+
+# CloudWatch log groups
+resource "aws_cloudwatch_log_group" "frontend" {
+  name              = "/ecs/${var.project_name}-frontend"
+  retention_in_days  = 7
+  tags              = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "backend" {
+  name              = "/ecs/${var.project_name}-backend"
+  retention_in_days  = 7
+  tags              = var.tags
+}
+
+# ECS Services
+resource "aws_ecs_service" "frontend" {
+  name            = "${var.project_name}-frontend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.frontend.arn
+  desired_count    = 1
+  launch_type      = "FARGATE"
+
+  network_configuration {
+    subnets          = module.vpc.private_subnets
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.frontend.arn
+    container_name  = "frontend"
+    container_port  = 80
+  }
+  tags = var.tags
+}
+
+resource "aws_ecs_service" "backend" {
+  name            = "${var.project_name}-backend"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.backend.arn
+  desired_count    = 1
+  launch_type      = "FARGATE"
+
+  network_configuration {
+    subnets          = module.vpc.private_subnets
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.backend.arn
+    container_name  = "backend"
+    container_port  = 3000
+  }
+  tags = var.tags
+}
+
+# ALB Listener rules - route /api to backend, default to frontend
+resource "aws_lb_listener_rule" "api" {
+  listener_arn = var.domain_name != "" && var.route53_zone_id != "" ? aws_lb_listener.https[0].arn : aws_lb_listener.http_forward[0].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/*"]
+    }
+  }
 }
 
 # S3 bucket for static assets (optional)
