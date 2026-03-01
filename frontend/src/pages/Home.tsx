@@ -201,7 +201,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              className="text-sm font-mono text-accent mb-4"
+              className="text-sm font-mono text-accent mb-4 mt-4"
             >
               Profile at a glance
             </motion.h2>
