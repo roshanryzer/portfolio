@@ -41,6 +41,8 @@ jobs:
         with:
           context: .
           file: docker/frontend.Dockerfile
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL || 'https://api.roshan-shrestha.com' }}
           push: true
           tags: |
             ${{ steps.ecr.outputs.registry }}/portfolio/frontend:${{ github.sha }}

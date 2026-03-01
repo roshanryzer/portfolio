@@ -16,8 +16,12 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+  const corsOrigin = config.get('CORS_ORIGIN', '*');
+  const origins = corsOrigin.includes(',')
+    ? corsOrigin.split(',').map((o) => o.trim())
+    : corsOrigin;
   app.enableCors({
-    origin: config.get('CORS_ORIGIN', '*'),
+    origin: origins,
     credentials: true,
   });
 

@@ -83,7 +83,7 @@ resource "aws_acm_certificate" "main" {
   count = var.domain_name != "" ? 1 : 0
 
   domain_name               = var.domain_name
-  subject_alternative_names = ["www.${var.domain_name}"]
+  subject_alternative_names = ["www.${var.domain_name}", "api.${var.domain_name}"]
   validation_method         = "DNS"
 
   lifecycle {
@@ -137,6 +137,20 @@ resource "aws_route53_record" "www" {
 
   zone_id = var.route53_zone_id
   name    = "www.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.main.dns_name
+    zone_id                = aws_lb.main.zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "api" {
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  zone_id = var.route53_zone_id
+  name    = "api.${var.domain_name}"
   type    = "A"
 
   alias {
@@ -360,12 +374,13 @@ resource "aws_ecs_task_definition" "backend" {
       containerPort = 3000
       protocol      = "tcp"
     }]
-    environment = var.database_url != "" ? [
-      { name = "NODE_ENV", value = "production" },
-      { name = "DATABASE_URL", value = var.database_url }
-    ] : [
-      { name = "NODE_ENV", value = "production" }
-    ]
+    environment = concat(
+      [
+        { name = "NODE_ENV", value = "production" },
+        { name = "CORS_ORIGIN", value = var.domain_name != "" ? "https://${var.domain_name},https://www.${var.domain_name}" : "*" }
+      ],
+      var.database_url != "" ? [{ name = "DATABASE_URL", value = var.database_url }] : []
+    )
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -434,9 +449,30 @@ resource "aws_ecs_service" "backend" {
   tags = var.tags
 }
 
-# ALB Listener rules - route /api to backend, default to frontend
+# ALB Listener rules - route api.* subdomain to backend, default to frontend
 resource "aws_lb_listener_rule" "api" {
-  listener_arn = var.domain_name != "" && var.route53_zone_id != "" ? aws_lb_listener.https[0].arn : aws_lb_listener.http_forward[0].arn
+  count = var.domain_name != "" && var.route53_zone_id != "" ? 1 : 0
+
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    host_header {
+      values = ["api.${var.domain_name}"]
+    }
+  }
+}
+
+# When no custom domain: path-based /api -> backend
+resource "aws_lb_listener_rule" "api_path" {
+  count = var.domain_name == "" || var.route53_zone_id == "" ? 1 : 0
+
+  listener_arn = aws_lb_listener.http_forward[0].arn
   priority     = 100
 
   action {
@@ -499,6 +535,11 @@ output "domain_name" {
 output "website_url" {
   value       = var.domain_name != "" ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
   description = "Primary URL for the application"
+}
+
+output "api_url" {
+  value       = var.domain_name != "" ? "https://api.${var.domain_name}" : "http://${aws_lb.main.dns_name}/api"
+  description = "API base URL (api subdomain when domain is set)"
 }
 
 # ACM validation records (when domain set but using external DNS - add these CNAMEs manually)
