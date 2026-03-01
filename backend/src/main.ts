@@ -16,9 +16,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  const corsOrigin = config.get('CORS_ORIGIN', '*');
+  const corsOrigin = config.get<string>('CORS_ORIGIN', '*');
   const origins = corsOrigin.includes(',')
-    ? corsOrigin.split(',').map((o) => o.trim())
+    ? corsOrigin.split(',').map((o: string) => o.trim())
     : corsOrigin;
   app.enableCors({
     origin: origins,
