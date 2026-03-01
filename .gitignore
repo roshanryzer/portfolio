@@ -19,9 +19,6 @@ out/
 # docs
 docs/
 
-# Docker
-docker/
-
 # IDE
 .idea/
 .vscode/
