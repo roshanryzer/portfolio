@@ -18,6 +18,10 @@ domain_name     = "roshan-shrestha.com"
 route53_zone_id = "Z0123456789ABCDEFGHIJ"  # MUST be your real zone ID - run: aws route53 list-hosted-zones --query "HostedZones[?Name=='roshan-shrestha.com.'].Id" --output text
 
 # Database - required for backend (Neon, Supabase, or RDS)
-# database_url = "postgresql://user:pass@host:5432/portfolio"
+# database_url = "postgresql://neondb_owner:npg_jm9e5kGbgUxw@ep-young-dawn-aizp6uoc-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+# JWT - required for backend auth. Generate: openssl rand -base64 32
+# jwt_secret         = "your-32-char-secret"
+# jwt_refresh_secret = "different-32-char-secret"
 
 # GitHub secret VITE_API_URL for frontend build (default: https://api.roshan-shrestha.com)

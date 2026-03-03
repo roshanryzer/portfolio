@@ -65,3 +65,17 @@ variable "database_url" {
   sensitive   = true
 }
 
+variable "jwt_secret" {
+  description = "JWT secret for access tokens (min 32 chars). Generate with: openssl rand -base64 32"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "jwt_refresh_secret" {
+  description = "JWT secret for refresh tokens (min 32 chars, different from jwt_secret)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+

@@ -1,5 +1,5 @@
 # ---- Build ----
-FROM node:20-alpine AS builder
+FROM node:20-bullseye-slim AS builder
 WORKDIR /app
 # Monorepo: lock file is at root
 COPY package.json package-lock.json ./
@@ -11,7 +11,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # ---- Production ----
-FROM node:20-alpine
+FROM node:20-bullseye-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
@@ -21,4 +21,4 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/backend/dist ./dist
 COPY backend/prisma ./prisma
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

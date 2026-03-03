@@ -379,7 +379,11 @@ resource "aws_ecs_task_definition" "backend" {
         { name = "NODE_ENV", value = "production" },
         { name = "CORS_ORIGIN", value = var.domain_name != "" ? "https://${var.domain_name},https://www.${var.domain_name}" : "*" }
       ],
-      var.database_url != "" ? [{ name = "DATABASE_URL", value = var.database_url }] : []
+      concat(
+        var.database_url != "" ? [{ name = "DATABASE_URL", value = var.database_url }] : [],
+        var.jwt_secret != "" ? [{ name = "JWT_SECRET", value = var.jwt_secret }] : [],
+        var.jwt_refresh_secret != "" ? [{ name = "JWT_REFRESH_SECRET", value = var.jwt_refresh_secret }] : []
+      )
     )
     logConfiguration = {
       logDriver = "awslogs"
