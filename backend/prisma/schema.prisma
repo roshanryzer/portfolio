@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  refreshTokens RefreshToken[]
+  auditLogs     AuditLog[]
+  twoFactorEnabled  Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret   String?   @map("two_factor_secret")
+  passwordResetToken   String?   @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+}
+
+
+enum Role {
+  ADMIN
+  USER
+  MODERATOR
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  resource  String?
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+// ---- Portfolio (single-owner developer profile) ----
+
+model Profile {
+  id               String   @id @default(cuid())
+  name             String
+  headline         String   // e.g. "Senior Full-Stack Engineer"
+  tagline          String   // e.g. "Build. Ship. Scale."
+  shortBio         String   @map("short_bio")  // hero blurb
+  longBio          String   @map("long_bio")   // about section
+  avatarUrl        String?  @map("avatar_url")
+  email            String?
+  linkedInUrl      String?  @map("linked_in_url")
+  githubUrl        String?  @map("github_url")
+  websiteUrl       String?  @map("website_url")
+  location         String?
+  yearsExperience  Int?     @map("years_experience")
+  projectsCount    Int?     @map("projects_count")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  category String // e.g. "Frontend", "Backend"
+  name     String
+  sortOrder Int   @default(0) @map("sort_order")
+  iconUrl  String? @map("icon_url")
+}
+
+model Certification {
+  id           String    @id @default(cuid())
+  name         String
+  issuer       String
+  issuedAt     DateTime  @map("issued_at")
+  url          String?
+  credentialId String?   @map("credential_id")
+  sortOrder    Int       @default(0) @map("sort_order")
+  logoUrl      String?   @map("logo_url")
+}
+
+model Education {
+  id          String   @id @default(cuid())
+  institution String
+  degree      String
+  field       String?
+  startYear   Int      @map("start_year")
+  endYear     Int?     @map("end_year")
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  logoUrl     String?  @map("logo_url")
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  company     String
+  role        String
+  startDate   DateTime @map("start_date")
+  endDate     DateTime? @map("end_date")
+  current     Boolean  @default(false)
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  logoUrl     String?  @map("logo_url")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  imageUrl    String?  @map("image_url")
+  url         String?
+  repoUrl     String?  @map("repo_url")
+  tech        Json?    // array of strings
+  featured    Boolean  @default(false)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

@@ -1,0 +1,95 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-southeast-2
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-2.amazonaws.com
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+      backend-image: ${{ steps.meta-backend.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend
+        id: meta-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/frontend.Dockerfile
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL || 'https://api.roshan-shrestha.com' }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/portfolio/frontend:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/portfolio/frontend:latest
+
+      - name: Build and push backend
+        id: meta-backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/portfolio/backend:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/portfolio/backend:latest
+
+  terraform-plan:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+      - name: Terraform init
+        working-directory: infra
+        run: terraform init
+      - name: Terraform plan
+        working-directory: infra
+        run: |
+          if [ -f environments/production.tfvars ]; then
+            terraform plan -var-file=environments/production.tfvars -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+
+  deploy:
+    needs: [build-and-push, terraform-plan]
+    runs-on: ubuntu-latest
+    # Deploy to ECS: update task definition with new image digest and run ECS service update
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy placeholder
+        run: |
+          echo "In production: update ECS task definition with ${{ needs.build-and-push.outputs.frontend-image }} and ${{ needs.build-and-push.outputs.backend-image }}"
+          echo "Run: aws ecs update-service --cluster portfolio-cluster --service portfolio-service --force-new-deployment"

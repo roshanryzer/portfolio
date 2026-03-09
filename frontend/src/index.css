@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply font-sans antialiased;
+    @apply text-slate-800 bg-slate-50;
+    @apply dark:text-slate-200 dark:bg-slate-950;
+  }
+}
+
+@layer components {
+  .container-tight {
+    @apply max-w-4xl mx-auto px-5 sm:px-8;
+  }
+  .section-padding {
+    @apply py-20 md:py-28;
+  }
+  .section-title {
+    @apply text-2xl md:text-3xl font-bold tracking-tight;
+    @apply text-slate-800 dark:text-slate-200;
+  }
+  .section-title-accent {
+    @apply font-mono text-base md:text-lg text-cyan-400 mr-3;
+  }
+}
+
+@media print {
+  .app-header,
+  .app-footer {
+    display: none !important;
+  }
+
+  main {
+    padding-top: 0 !important;
+  }
+
+  .resume-print {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Try to keep logical units together on a page */
+  .job,
+  .education-item,
+  .border-l-4,
+  .resume-print section {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
+}
